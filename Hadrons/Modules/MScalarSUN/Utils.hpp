@@ -109,6 +109,27 @@ std::vector<Complex> makeTwoPoint(const std::vector<SinkSite>   &sink,
     return res;
 }
 
+inline double windowFunction(int x, int y, int z, double a, double b)
+{
+    double r;
+    r = pow(pow(x, 2) + pow(y, 2) + pow(z, 2), .5);
+
+    if (r < a)
+    {
+        return 0.0;
+    }
+    else if (r > b)
+    {
+        return 1.0;
+    } else
+    {
+        //write integration code
+        return (r-a)/(b-a);
+    }
+    
+
+}
+
 inline std::string varName(const std::string name, const std::string suf)
 {
     return name + "_" + suf;
