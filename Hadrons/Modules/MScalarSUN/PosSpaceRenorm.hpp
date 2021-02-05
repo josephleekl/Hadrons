@@ -179,11 +179,11 @@ void TPosSpaceRenorm<SImpl>::execute(void)
         auto &op1 = envGet(ComplexField, p.first);
         auto &op2 = envGet(ComplexField, p.second);
 
-        for(int i = 0; i < 4; i++) //Change back to L
+        for(int i = 0; i < L; i++) //Change back to L
         {
-            for (int j = 0; j < 4; j++) //Change back to L
+            for (int j = 0; j < L; j++) //Change back to L
             {
-                for (int k = 0; k < 4; k++) //Change back to L
+                for (int k = 0; k < L; k++) //Change back to L
                 {
                     
                     shift = {i,j,k};
