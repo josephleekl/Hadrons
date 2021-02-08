@@ -18,6 +18,7 @@ class PosSpaceRenormPar: Serializable
 public:
     typedef std::pair<std::string, std::string> OpPair;
     GRID_SERIALIZABLE_CLASS_MEMBERS(PosSpaceRenormPar,
+                                    unsigned int,              samp,
                                     std::vector<OpPair>,       op,
                                     std::vector<std::string>,  mom,
                                     std::string,               output);
@@ -39,6 +40,7 @@ class TPosSpaceRenorm: public Module<PosSpaceRenormPar>
 public:
     typedef typename SImpl::Field         Field;
     typedef typename SImpl::ComplexField  ComplexField;
+    typedef Grid::iVector<Grid::RealD, 200> Vec;
 public:
     // constructor
     TPosSpaceRenorm(const std::string name);
@@ -134,9 +136,12 @@ void TPosSpaceRenorm<SImpl>::execute(void)
     const uint64_t                    nsimd   = vComplex::Nsimd();
     const unsigned int                nd      = env().getDim().size();
     const unsigned int                nop     = par().op.size();
+    const unsigned int                samp    = par().samp;
+    const unsigned int                nmom    = mom_.size();
+    std::vector<PosSpaceRenormResult> result;
     std::set<std::string>             ops;
     int                               Nsite;
-    std::vector<int>                  qt(3,0), shift(3,0);
+    std::vector<int>                  qt_test(3,0), shift(3,0);
     const unsigned int                L       = env().getDim().back(); // ????
     FFT                               fft(envGetGrid(Field));
     std::vector<int>                  dMask(nd, 1);
@@ -161,54 +166,53 @@ void TPosSpaceRenorm<SImpl>::execute(void)
         windowFuncField += coor*coor;
     }
     
-    TComplex TCbuf1, TCbuf2; 
+    Vec                 rn;
+    GridSerialRNG             sRNG;   
+    sRNG.SeedFixedIntegers(std::vector<int>({45,12,81}));
+    random(sRNG, rn);
+    LOG(Message) << "random vector = " << rn << std::endl;
+    TComplex TCbuf1,
+    TCbuf2;
     for (int i = 0; i < L; i++)
     {
-        qt = {0, 0, i};
-        peekSite(TCbuf1, windowFuncField, qt);
-        //LOG(Message) << "qt = " << qt << "    coor = " << TCbuf1 << std::endl;
-        qt = {0, i, i};
-        peekSite(TCbuf1, windowFuncField, qt);
-        //LOG(Message) << "qt = " << qt << "    coor = " << TCbuf1 << std::endl;
-
+        qt_test = {0, 0, i};
+        peekSite(TCbuf1, windowFuncField, qt_test);
+        //LOG(Message) << "qt_test = " << qt_test << "    coor = " << TCbuf1 << std::endl;
+        qt_test = {0, i, i};
+        peekSite(TCbuf1, windowFuncField, qt_test);
+        //LOG(Message) << "qt_test = " << qt_test << "    coor = " << TCbuf1 << std::endl;
     }
     windowFuncField = 1.0;
-    int mu;
+    int shift_x, shift_y, shift_z;
+    shift = {0,0,0};
+    for (unsigned int m = 0; m < nmom; ++m)
     for (auto &p: par().op)
     {
         auto &op1 = envGet(ComplexField, p.first);
         auto &op2 = envGet(ComplexField, p.second);
+        auto qt = mom_[m];
+        qt.resize(nd);
 
-        for(int i = 0; i < L; i++) //Change back to L
+        for(int i = 0; i < samp; i++)
         {
-            for (int j = 0; j < L; j++) //Change back to L
+            ft_buf_in = op2;
+            for(int mu = 0; mu < nd; mu++)
             {
-                for (int k = 0; k < L; k++) //Change back to L
-                {
-                    
-                    shift = {i,j,k};
-                    peekSite(TCbuf1, op1, shift);
-                    ft_buf_in = adj(op2) * windowFuncField;
-                    fft.FFT_all_dim(ft_buf_out, ft_buf_in, FFT::forward);
-
-                    for (int t = 0; t < L; t++)
-                    {
-                        qt = {1, 1, t};
-                        peekSite(TCbuf2, ft_buf_out, qt);
-                        res[t] += TensorRemove(TCbuf1)*TensorRemove(TCbuf2);
-                    }
-                    mu = 2;
-                    op2 = Cshift(op2, mu, 1);
-                    
-                }
-                mu = 1;
-                op2 = Cshift(op2, mu, 1);
-                LOG(Message) << "still going i =  " << i << "  j = " << j << std::endl;
-            } 
-            mu = 0;
-            op2 = Cshift(op2, mu, 1);
-            
+                shift[mu] = rn((i+mu)%samp)*L;
+                ft_buf_in = Cshift(ft_buf_in, mu, shift[mu]);
+            }
+            LOG(Message) << "shift = " << shift << std::endl;
+            peekSite(TCbuf1, op1, shift);
+            ft_buf_in = ft_buf_in * windowFuncField;
+            fft.FFT_all_dim(ft_buf_out, ft_buf_in, FFT::forward);
+            for (int t = 0; t < L; t++)
+            {
+                qt[nd-1] = t;
+                peekSite(TCbuf2, ft_buf_out, qt);
+                res[t] += TensorRemove(TCbuf1)*adj(TensorRemove(TCbuf2)); // divide some volume factors?
+            }
         }
+
 
         //Experimental
 
@@ -228,9 +232,15 @@ void TPosSpaceRenorm<SImpl>::execute(void)
                         });
 
         LOG(Message) << "op1 size " << op1_v.size() << std::endl; */
+        PosSpaceRenormResult r;
+
+        r.sink   = p.first;
+        r.source = p.second;
+        r.mom    = mom_[m];
+        r.data   = res;
+        result.push_back(r);
     }
-
-
+    saveResult(par().output, "twopt", result);
 }
 
 END_MODULE_NAMESPACE
