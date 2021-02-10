@@ -109,11 +109,29 @@ std::vector<Complex> makeTwoPoint(const std::vector<SinkSite>   &sink,
     return res;
 }
 
-inline double windowFunction(int x, int y, int z, double a, double b)
-{
-    double r;
-    r = pow(pow(x, 2) + pow(y, 2) + pow(z, 2), .5);
 
+inline double WindowBeta(double a, double b, double r)
+{
+    return exp(-1.0/(r-a)-1.0/(b-r));
+}
+
+//Integrate WindowGamma(r, a, c) from a to r
+inline double trapezoidalIntegral(double a, double b, double r, int n, const std::function<double (double, double, double)> &f) {
+    const double width = (r-a)/n;
+
+    double trapezoidal_integral = 0;
+    for(int step = 0; step < n; step++) {
+        const double x1 = a + step*width;
+        const double x2 = a + (step+1)*width;
+
+        trapezoidal_integral += 0.5*(x2-x1)*(f(a, b, 1) + f(a, b, x2));
+    }
+
+    return trapezoidal_integral;
+}
+
+inline double windowFunction(double a, double b, double r, int n_step)
+{
     if (r < a)
     {
         return 0.0;
@@ -123,11 +141,8 @@ inline double windowFunction(int x, int y, int z, double a, double b)
         return 1.0;
     } else
     {
-        //write integration code
-        return (r-a)/(b-a);
+        return trapezoidalIntegral(a, b, r, n_step, &WindowBeta) / trapezoidalIntegral(a, b, b, n_step, &WindowBeta);
     }
-    
-
 }
 
 inline std::string varName(const std::string name, const std::string suf)

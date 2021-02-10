@@ -19,6 +19,8 @@ public:
     typedef std::pair<std::string, std::string> OpPair;
     GRID_SERIALIZABLE_CLASS_MEMBERS(PosSpaceRenormPar,
                                     unsigned int,              samp,
+                                    double,                    windowmin,
+                                    double,                    windowmax,
                                     std::vector<OpPair>,       op,
                                     std::vector<std::string>,  mom,
                                     std::string,               output);
@@ -40,7 +42,7 @@ class TPosSpaceRenorm: public Module<PosSpaceRenormPar>
 public:
     typedef typename SImpl::Field         Field;
     typedef typename SImpl::ComplexField  ComplexField;
-    typedef Grid::iVector<Grid::RealD, 200> Vec;
+    typedef Grid::iVector<Grid::RealD, 2000> Vec;
 public:
     // constructor
     TPosSpaceRenorm(const std::string name);
@@ -133,19 +135,25 @@ template <typename SImpl>
 void TPosSpaceRenorm<SImpl>::execute(void)
 {
 
-    const uint64_t                    nsimd   = vComplex::Nsimd();
-    const unsigned int                nd      = env().getDim().size();
-    const unsigned int                nop     = par().op.size();
-    const unsigned int                samp    = par().samp;
-    const unsigned int                nmom    = mom_.size();
+    const uint64_t                    nsimd         = vComplex::Nsimd();
+    const unsigned int                nd            = env().getDim().size();
+    const unsigned int                L             = env().getDim().back(); 
+    const unsigned int                nop           = par().op.size();
+    //const unsigned int              samp          = par().samp;
+    unsigned int                      samp          = par().samp;
+    double                            windowmin     = par().windowmin;
+    double                            windowmax     = par().windowmax;
+    const unsigned int                nmom          = mom_.size();
     std::vector<PosSpaceRenormResult> result;
     std::set<std::string>             ops;
-    int                               Nsite;
-    std::vector<int>                  qt_test(3,0), shift(3,0);
-    const unsigned int                L       = env().getDim().back(); // ????
+    std::vector<int>                  shift(nd,0);
     FFT                               fft(envGetGrid(Field));
-    std::vector<int>                  dMask(nd, 1);
     std::vector<Complex>              res(L, 0.);
+    TComplex                          TCbuf1,    TCbuf2;
+    Vec                               rn;
+    GridSerialRNG                     sRNG;   
+    sRNG.SeedFixedIntegers(std::vector<int>({45,12,81}));
+    random(sRNG, rn);
 
     envGetTmp(ComplexField, coor);
     envGetTmp(ComplexField, windowFuncField);
@@ -165,26 +173,24 @@ void TPosSpaceRenorm<SImpl>::execute(void)
         coor = (L-abs(Integer(2)*coor-L))*RealD(0.5);
         windowFuncField += coor*coor;
     }
-    
-    Vec                 rn;
-    GridSerialRNG             sRNG;   
-    sRNG.SeedFixedIntegers(std::vector<int>({45,12,81}));
-    random(sRNG, rn);
-    LOG(Message) << "random vector = " << rn << std::endl;
-    TComplex TCbuf1,
-    TCbuf2;
-    for (int i = 0; i < L; i++)
+    windowFuncField = sqrt(windowFuncField);
+    for(int i = 0; i < L; i++)
     {
-        qt_test = {0, 0, i};
-        peekSite(TCbuf1, windowFuncField, qt_test);
-        //LOG(Message) << "qt_test = " << qt_test << "    coor = " << TCbuf1 << std::endl;
-        qt_test = {0, i, i};
-        peekSite(TCbuf1, windowFuncField, qt_test);
-        //LOG(Message) << "qt_test = " << qt_test << "    coor = " << TCbuf1 << std::endl;
+        for(int j = 0; j < L; j++)
+        {
+            for(int k = 0; k < L; k++)
+            {
+                shift = {i, j, k};
+                peekSite(TCbuf1, windowFuncField, shift);
+                TCbuf1 = windowFunction(windowmin, windowmax, TensorRemove(TCbuf1).real(), 1000);
+                pokeSite(TCbuf1, windowFuncField, shift);
+            }
+        }
+        
     }
-    windowFuncField = 1.0;
-    int shift_x, shift_y, shift_z;
-    shift = {0,0,0};
+
+    shift = {0, 0, 0};
+    
     for (unsigned int m = 0; m < nmom; ++m)
     for (auto &p: par().op)
     {
@@ -193,26 +199,29 @@ void TPosSpaceRenorm<SImpl>::execute(void)
         auto qt = mom_[m];
         qt.resize(nd);
 
+        //samp = L*L*L; //temp
         for(int i = 0; i < samp; i++)
         {
             ft_buf_in = op2;
+            //shift[0] = i%L; //temp
+            //shift[1] = (i/L)%L;//temp
+            //shift[2] = (i/L/L);//temp
             for(int mu = 0; mu < nd; mu++)
             {
-                shift[mu] = rn((i+mu)%samp)*L;
+                shift[mu] = rn((i+mu)%samp)*L; //to restore from temp
                 ft_buf_in = Cshift(ft_buf_in, mu, shift[mu]);
-            }
-            LOG(Message) << "shift = " << shift << std::endl;
+            } 
+            LOG(Message) << "random shift = " << shift << std::endl;
             peekSite(TCbuf1, op1, shift);
-            ft_buf_in = ft_buf_in * windowFuncField;
+            //ft_buf_in = ft_buf_in * windowFuncField;
             fft.FFT_all_dim(ft_buf_out, ft_buf_in, FFT::forward);
             for (int t = 0; t < L; t++)
             {
                 qt[nd-1] = t;
-                peekSite(TCbuf2, ft_buf_out, qt);
-                res[t] += TensorRemove(TCbuf1)*adj(TensorRemove(TCbuf2)); // divide some volume factors?
+                peekSite(TCbuf2, adj(ft_buf_out), qt);
+                res[t] += trace(TensorRemove(TCbuf1*TCbuf2))/double(samp); // divide some volume factors?
             }
         }
-
 
         //Experimental
 

@@ -170,7 +170,7 @@ void TTwoPoint<SImpl>::execute(void)
     TComplex                                     buf;
 
     envGetTmp(ComplexField, ftBuf);
-    dMask[nd - 1] = 0;
+    dMask[nd - 1] = 0; 
     for (unsigned int mu = 0; mu < nd - 1; ++mu)
     {
         partVol *= env().getDim()[mu];
@@ -186,7 +186,8 @@ void TTwoPoint<SImpl>::execute(void)
 
         slicedOp[o].resize(nmom);
         LOG(Message) << "Operator '" << o << "' FFT" << std::endl;
-        fft.FFT_dim_mask(ftBuf, op, dMask, FFT::forward);
+        //fft.FFT_dim_mask(ftBuf, op, dMask, FFT::forward);
+        fft.FFT_all_dim(ftBuf, op, FFT::forward);
         for (unsigned int m = 0; m < nmom; ++m)
         {
             auto qt = mom_[m];
