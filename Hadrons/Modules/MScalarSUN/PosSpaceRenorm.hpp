@@ -206,14 +206,16 @@ void TPosSpaceRenorm<SImpl>::execute(void)
             //shift[0] = i%L; //temp
             //shift[1] = (i/L)%L;//temp
             //shift[2] = (i/L/L);//temp
-            for(int mu = 0; mu < nd; mu++)
-            {
-                shift[mu] = rn((i+mu)%samp)*L; //to restore from temp
-                ft_buf_in = Cshift(ft_buf_in, mu, shift[mu]);
-            } 
-            LOG(Message) << "random shift = " << shift << std::endl;
+            if(samp != 1){
+                for(int mu = 0; mu < nd; mu++)
+                {
+                    shift[mu] = rn((i+mu)%samp)*L; //to restore from temp
+                    ft_buf_in = Cshift(ft_buf_in, mu, shift[mu]);
+                } 
+            }
+            LOG(Message) << "shift coordinate = " << shift << std::endl;
             peekSite(TCbuf1, op1, shift);
-            //ft_buf_in = ft_buf_in * windowFuncField;
+            //ft_buf_in = ft_buf_in * windowFuncField; //don't multiply window function
             fft.FFT_all_dim(ft_buf_out, ft_buf_in, FFT::forward);
             for (int t = 0; t < L; t++)
             {
