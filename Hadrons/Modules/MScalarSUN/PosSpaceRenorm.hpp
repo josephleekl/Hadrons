@@ -155,17 +155,16 @@ void TPosSpaceRenorm<SImpl>::execute(void)
     sRNG.SeedFixedIntegers(std::vector<int>({45,12,81}));
     random(sRNG, rn);
 
+
     envGetTmp(ComplexField, coor);
     envGetTmp(ComplexField, windowFuncField);
     envGetTmp(ComplexField, ft_buf_in);
     envGetTmp(ComplexField, ft_buf_out);
-
     for (auto &p: par().op)
     {
         ops.insert(p.first);
         ops.insert(p.second);
     }
-
     windowFuncField = 0.0;
     for(int mu = 0; mu < nd; mu++) 
     {
@@ -174,6 +173,7 @@ void TPosSpaceRenorm<SImpl>::execute(void)
         windowFuncField += coor*coor;
     }
     windowFuncField = sqrt(windowFuncField);
+
     for(int i = 0; i < L; i++)
     {
         for(int j = 0; j < L; j++)
@@ -182,13 +182,12 @@ void TPosSpaceRenorm<SImpl>::execute(void)
             {
                 shift = {i, j, k};
                 peekSite(TCbuf1, windowFuncField, shift);
-                TCbuf1 = windowFunction(windowmin, windowmax, TensorRemove(TCbuf1).real(), 1000);
-                pokeSite(TCbuf1, windowFuncField, shift);
+                TCbuf2 = windowFunction(windowmin, windowmax, TensorRemove(TCbuf1).real(), 1000);
+                pokeSite(TCbuf2, windowFuncField, shift);
             }
         }
         
     }
-
     shift = {0, 0, 0};
     
     for (unsigned int m = 0; m < nmom; ++m)

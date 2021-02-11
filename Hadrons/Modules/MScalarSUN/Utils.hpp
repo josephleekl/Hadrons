@@ -112,7 +112,13 @@ std::vector<Complex> makeTwoPoint(const std::vector<SinkSite>   &sink,
 
 inline double WindowBeta(double a, double b, double r)
 {
-    return exp(-1.0/(r-a)-1.0/(b-r));
+    if (r==a || r==b)
+    {
+        return 0.0;
+    } else 
+    {
+        return exp(-1.0/(r-a)-1.0/(b-r));
+    }
 }
 
 //Integrate WindowGamma(r, a, c) from a to r
@@ -124,7 +130,7 @@ inline double trapezoidalIntegral(double a, double b, double r, int n, const std
         const double x1 = a + step*width;
         const double x2 = a + (step+1)*width;
 
-        trapezoidal_integral += 0.5*(x2-x1)*(f(a, b, 1) + f(a, b, x2));
+        trapezoidal_integral += 0.5*(x2-x1)*(f(a, b, x1) + f(a, b, x2));
     }
 
     return trapezoidal_integral;
@@ -132,16 +138,16 @@ inline double trapezoidalIntegral(double a, double b, double r, int n, const std
 
 inline double windowFunction(double a, double b, double r, int n_step)
 {
-    if (r < a)
+    if (r <= a)
     {
         return 0.0;
     }
-    else if (r > b)
+    else if (r >= b)
     {
         return 1.0;
     } else
     {
-        return trapezoidalIntegral(a, b, r, n_step, &WindowBeta) / trapezoidalIntegral(a, b, b, n_step, &WindowBeta);
+        return trapezoidalIntegral(a, b, r, n_step, &WindowBeta)/trapezoidalIntegral(a, b, b, n_step, &WindowBeta);
     }
 }
 
