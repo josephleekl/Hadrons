@@ -186,8 +186,8 @@ void TTwoPoint<SImpl>::execute(void)
 
         slicedOp[o].resize(nmom);
         LOG(Message) << "Operator '" << o << "' FFT" << std::endl;
-        //fft.FFT_dim_mask(ftBuf, op, dMask, FFT::forward);
-        fft.FFT_all_dim(ftBuf, op, FFT::forward);
+        fft.FFT_dim_mask(ftBuf, op, dMask, FFT::forward);
+        //fft.FFT_all_dim(ftBuf, op, FFT::forward);
         for (unsigned int m = 0; m < nmom; ++m)
         {
             auto qt = mom_[m];
