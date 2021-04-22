@@ -42,6 +42,7 @@ class TPosSpaceRenorm: public Module<PosSpaceRenormPar>
 public:
     typedef typename SImpl::Field         Field;
     typedef typename SImpl::ComplexField  ComplexField;
+    typedef          std::vector<Complex> SlicedOp;
     typedef Grid::iVector<Grid::RealD, 2000> Vec;
 public:
     // constructor
@@ -124,10 +125,14 @@ void TPosSpaceRenorm<SImpl>::setup(void)
         }
     }
     
+    //envTmpLat(ComplexField, "coor");
+    //envTmpLat(ComplexField, "windowFuncField");
+    //envTmpLat(ComplexField, "ft_buf_in");
+    //envTmpLat(ComplexField, "ft_buf_out");
+    envTmpLat(ComplexField, "ftBuf");
+    envTmpLat(ComplexField, "op2ShiftBuf");
     envTmpLat(ComplexField, "coor");
-    envTmpLat(ComplexField, "windowFuncField");
-    envTmpLat(ComplexField, "ft_buf_in");
-    envTmpLat(ComplexField, "ft_buf_out");
+    envTmpLat(ComplexField, "windowField");
 }
 
 // execution ///////////////////////////////////////////////////////////////////
@@ -135,7 +140,111 @@ template <typename SImpl>
 void TPosSpaceRenorm<SImpl>::execute(void)
 {
 
-    const uint64_t                    nsimd         = vComplex::Nsimd();
+    const unsigned int                           nd      = env().getNd();
+    const unsigned int                           nt      = env().getDim().back();
+    const unsigned int                           nop     = par().op.size();
+    const unsigned int                           nmom    = mom_.size();
+    double                                       partVol = 1.;
+    double                                       windowmin = par().windowmin;
+    double                                       windowmax = par().windowmax;
+
+    std::set<std::string>                        ops;
+    std::vector<PosSpaceRenormResult>            result;
+    std::map<std::string, std::vector<SlicedOp>> slicedOp;
+    FFT                                          fft(envGetGrid(Field));
+    TComplex                                     buf1, buf2, wbuf1;
+    std::vector<int>                             shift(nd,0);
+    std::vector<std::vector<Complex>>            res(nmom, std::vector<Complex>(nt, 0.));
+    std::vector<int>                             qt(nd,0);
+    TComplex                                     buf3, buf4;
+    Complex                                      bufsum(0., 0.);
+
+    envGetTmp(ComplexField, ftBuf);
+    envGetTmp(ComplexField, op2ShiftBuf);
+    envGetTmp(ComplexField, coor);
+    envGetTmp(ComplexField, windowField);
+
+    /* for (auto &p: par().op)
+    {
+        ops.insert(p.first);
+        ops.insert(p.second);
+    } */
+    //make window function
+    windowField = 0.0;
+    double r; 
+    for (int i = 0; i < nt; i++)
+    {
+        for (int j = 0; j < nt; j++)
+        {
+            for (int k = 0; k < nt; k++)
+            {
+                shift = {i, j, k};
+                r = 0.;
+                r += std::pow(fmin(i, nt - i), 2);
+                r += std::pow(fmin(j, nt - j), 2);
+                r += std::pow(fmin(k, nt - k), 2);
+                r = sqrt(r);
+                wbuf1 = windowFunction(windowmin, windowmax, r, 1000);
+                LOG(Message) << i << " " << j << " " << k << ": " << wbuf1 << std::endl;
+                pokeSite(wbuf1, windowField, shift);
+            }
+        }
+    }
+
+
+    for (auto &p: par().op)
+    {
+        auto &op1 = envGet(ComplexField, p.first);
+        auto &op2 = envGet(ComplexField, p.second);
+        op2ShiftBuf = op2;
+        for(int i = 0; i < nt; i++)
+        {
+            for(int j = 0; j < nt; j++)
+            {
+                for(int k = 0; k < nt; k++)
+                {
+                    shift = {i, j, k};
+                    peekSite(buf1, op1, shift);
+                    op2ShiftBuf *= windowField;
+                    fft.FFT_all_dim(ftBuf, op2ShiftBuf, FFT::forward);
+                    //SUM TEST
+                    peekSite(buf3, op1, shift);
+                    bufsum += trace(TensorRemove(buf3));
+                    //END SUM TEST
+                    for (unsigned int m = 0; m < nmom; ++m)
+                    {
+                        //auto qt = mom_[m];
+                        //qt.resize(nd);
+                        qt[0] = mom_[m][0];
+                        qt[1] = mom_[m][1];
+
+                        for (unsigned int t = 0; t < nt; ++t)
+                        {
+                             qt[nd - 1] = t;
+                            peekSite(buf2, ftBuf, qt);
+                            res[m][t] += trace(TensorRemove(buf1) * adj(TensorRemove(buf2))) / static_cast<double>(nt*nt*nt);
+                        }
+                        
+                    }
+                    op2ShiftBuf = Cshift(op2ShiftBuf, 2, 1);
+                }
+                op2ShiftBuf = Cshift(op2ShiftBuf, 1, 1);
+            }
+            op2ShiftBuf = Cshift(op2ShiftBuf, 0, 1);
+        }
+        for (unsigned int m = 0; m < nmom; ++m)
+        {
+            PosSpaceRenormResult r;
+            r.sink    = p.first;
+            r.source  = p.second;
+            r.mom     = mom_[m];
+            r.data    = res[m];
+            result.push_back(r);
+        }
+    }
+    saveResult(par().output, "twopt", result);
+
+    /* const uint64_t                    nsimd         = vComplex::Nsimd();
     const unsigned int                nd            = env().getDim().size();
     const unsigned int                L             = env().getDim().back(); 
     const unsigned int                nop           = par().op.size();
@@ -222,7 +331,7 @@ void TPosSpaceRenorm<SImpl>::execute(void)
                 peekSite(TCbuf2, adj(ft_buf_out), qt);
                 res[t] += trace(TensorRemove(TCbuf1*TCbuf2))/double(samp); // divide some volume factors?
             }
-        }
+        } */
 
         //Experimental
 
@@ -241,7 +350,7 @@ void TPosSpaceRenorm<SImpl>::execute(void)
 
                         });
 
-        LOG(Message) << "op1 size " << op1_v.size() << std::endl; */
+        LOG(Message) << "op1 size " << op1_v.size() << std::endl; 
         PosSpaceRenormResult r;
 
         r.sink   = p.first;
@@ -250,7 +359,7 @@ void TPosSpaceRenorm<SImpl>::execute(void)
         r.data   = res;
         result.push_back(r);
     }
-    saveResult(par().output, "twopt", result);
+    saveResult(par().output, "twopt", result);*/
 }
 
 END_MODULE_NAMESPACE
