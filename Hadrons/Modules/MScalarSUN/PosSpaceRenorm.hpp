@@ -144,6 +144,7 @@ void TPosSpaceRenorm<SImpl>::execute(void)
     const unsigned int                           nt      = env().getDim().back();
     const unsigned int                           nop     = par().op.size();
     const unsigned int                           nmom    = mom_.size();
+    const unsigned int                           samp    = par().samp;
     double                                       partVol = 1.;
     double                                       windowmin = par().windowmin;
     double                                       windowmax = par().windowmax;
@@ -158,6 +159,11 @@ void TPosSpaceRenorm<SImpl>::execute(void)
     std::vector<int>                             qt(nd,0);
     TComplex                                     buf3, buf4;
     Complex                                      bufsum(0., 0.);
+    //Grid::iVector<Grid::RealD, 2000> Vec;
+    Grid::iVector<Grid::RealD, 3> rn;
+    GridSerialRNG sRNG;
+    sRNG.SeedFixedIntegers(std::vector<int>({45, 12, 81}));
+    random(sRNG, rn);
 
     envGetTmp(ComplexField, ftBuf);
     envGetTmp(ComplexField, op2ShiftBuf);
@@ -185,53 +191,47 @@ void TPosSpaceRenorm<SImpl>::execute(void)
                 r += std::pow(fmin(k, nt - k), 2);
                 r = sqrt(r);
                 wbuf1 = windowFunction(windowmin, windowmax, r, 1000);
-                LOG(Message) << i << " " << j << " " << k << ": " << wbuf1 << std::endl;
                 pokeSite(wbuf1, windowField, shift);
             }
         }
     }
 
-
+    LOG(Message) << "Computing 2-point functions (w/ Window)" << std::endl;
     for (auto &p: par().op)
     {
+        LOG(Message) << "  <" << p.first << " " << p.second << ">" << std::endl;
         auto &op1 = envGet(ComplexField, p.first);
         auto &op2 = envGet(ComplexField, p.second);
         op2ShiftBuf = op2;
-        for(int i = 0; i < nt; i++)
+        sRNG.SeedFixedIntegers(std::vector<int>({45, 12, 81}));
+        for (int i = 0; i < samp; i++)
         {
-            for(int j = 0; j < nt; j++)
+            random(sRNG, rn);
+            for (int mu = 0; mu < nd; mu++)
             {
-                for(int k = 0; k < nt; k++)
-                {
-                    shift = {i, j, k};
-                    peekSite(buf1, op1, shift);
-                    op2ShiftBuf *= windowField;
-                    fft.FFT_all_dim(ftBuf, op2ShiftBuf, FFT::forward);
-                    //SUM TEST
-                    peekSite(buf3, op1, shift);
-                    bufsum += trace(TensorRemove(buf3));
-                    //END SUM TEST
-                    for (unsigned int m = 0; m < nmom; ++m)
-                    {
-                        //auto qt = mom_[m];
-                        //qt.resize(nd);
-                        qt[0] = mom_[m][0];
-                        qt[1] = mom_[m][1];
-
-                        for (unsigned int t = 0; t < nt; ++t)
-                        {
-                             qt[nd - 1] = t;
-                            peekSite(buf2, ftBuf, qt);
-                            res[m][t] += trace(TensorRemove(buf1) * adj(TensorRemove(buf2))) / static_cast<double>(nt*nt*nt);
-                        }
-                        
-                    }
-                    op2ShiftBuf = Cshift(op2ShiftBuf, 2, 1);
-                }
-                op2ShiftBuf = Cshift(op2ShiftBuf, 1, 1);
+                shift[mu] = nt * rn(mu);
+                op2ShiftBuf = Cshift(op2, mu, shift[mu]);
             }
-            op2ShiftBuf = Cshift(op2ShiftBuf, 0, 1);
+            LOG(Message) << "shift = " << shift << std::endl;
+            peekSite(buf1, op1, shift);
+            op2ShiftBuf *= windowField;
+            fft.FFT_all_dim(ftBuf, op2ShiftBuf, FFT::forward);
+            for (unsigned int m = 0; m < nmom; ++m)
+            {
+                //auto qt = mom_[m];
+                //qt.resize(nd);
+                qt[0] = mom_[m][0];
+                qt[1] = mom_[m][1];
+
+                for (unsigned int t = 0; t < nt; ++t)
+                {
+                    qt[nd - 1] = t;
+                    peekSite(buf2, ftBuf, qt);
+                    res[m][t] += trace(TensorRemove(buf1) * adj(TensorRemove(buf2))) / static_cast<double>(samp);
+                }
+            }
         }
+        LOG(Message) << "Saving result..." << std::endl;
         for (unsigned int m = 0; m < nmom; ++m)
         {
             PosSpaceRenormResult r;
