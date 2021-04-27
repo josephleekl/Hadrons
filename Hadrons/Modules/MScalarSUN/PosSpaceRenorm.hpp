@@ -18,12 +18,13 @@ class PosSpaceRenormPar: Serializable
 public:
     typedef std::pair<std::string, std::string> OpPair;
     GRID_SERIALIZABLE_CLASS_MEMBERS(PosSpaceRenormPar,
-                                    unsigned int,              samp,
-                                    double,                    windowmin,
-                                    double,                    windowmax,
-                                    std::vector<OpPair>,       op,
-                                    std::vector<std::string>,  mom,
-                                    std::string,               output);
+                                    unsigned int, samp,
+                                    double, zeroval, 
+                                    double, windowmin,
+                                    double, windowmax,
+                                    std::vector<OpPair>, op,
+                                    std::vector<std::string>, mom,
+                                    std::string, output);
 };
 
 class PosSpaceRenormResult: Serializable
@@ -146,6 +147,7 @@ void TPosSpaceRenorm<SImpl>::execute(void)
     const unsigned int                           nmom    = mom_.size();
     const unsigned int                           samp    = par().samp;
     double                                       partVol = 1.;
+    double                                       zeroval   = par().zeroval;
     double                                       windowmin = par().windowmin;
     double                                       windowmax = par().windowmax;
 
@@ -157,7 +159,6 @@ void TPosSpaceRenorm<SImpl>::execute(void)
     std::vector<int>                             shift(nd,0);
     std::vector<std::vector<Complex>>            res(nmom, std::vector<Complex>(nt, 0.));
     std::vector<int>                             qt(nd,0);
-    TComplex                                     buf3, buf4;
     Complex                                      bufsum(0., 0.);
     //Grid::iVector<Grid::RealD, 2000> Vec;
     Grid::iVector<Grid::RealD, 3> rn;
@@ -195,11 +196,29 @@ void TPosSpaceRenorm<SImpl>::execute(void)
             }
         }
     }
+    //set point at 0:
+    shift = {0, 0, 0};
+    wbuf1 = zeroval;
+    pokeSite(wbuf1, windowField, shift);
     LOG(Message) << "Computing 2-point functions (w/ Window)" << std::endl;
     LOG(Message) << "Window function min: " << windowmin << std::endl;
     LOG(Message) << "Window function max: " << windowmax << std::endl;
+    shift = {0, 0, 0};
+    peekSite(wbuf1, windowField, shift);
+    LOG(Message) << "Window field values at " << shift << " : " << TensorRemove(wbuf1) << std::endl;
+    shift = {0, 0, 1};
+    peekSite(wbuf1, windowField, shift);
+    LOG(Message) << "Window field values at " << shift << " : " << TensorRemove(wbuf1) << std::endl;
+    shift = {0, 1, 1};
+    peekSite(wbuf1, windowField, shift);
+    LOG(Message) << "Window field values at " << shift << " : " << TensorRemove(wbuf1) << std::endl;
+    shift = {1, 1, 1};
+    peekSite(wbuf1, windowField, shift);
+    LOG(Message) << "Window field values at " << shift << " : "  << TensorRemove(wbuf1) << std::endl;
+    shift = {0, 0, 2};
+    peekSite(wbuf1, windowField, shift);
+    LOG(Message) << "Window field values at " << shift << " : " << TensorRemove(wbuf1) << std::endl;
     LOG(Message) << "Sample pts per traj: " << samp << std::endl;
-
     for (auto &p: par().op)
     {
         LOG(Message) << "  <" << p.first << " " << p.second << ">" << std::endl;
@@ -215,6 +234,14 @@ void TPosSpaceRenorm<SImpl>::execute(void)
                 shift[mu] = nt * rn(mu);
                 op2ShiftBuf = Cshift(op2, mu, shift[mu]);
             }
+            //START TEST
+            /* shift[0] = i%nt; //temp
+            shift[1] = (i/nt)%nt;//temp
+            shift[2] = (i/nt/nt)%nt;//temp
+            op2ShiftBuf = Cshift(op2, 0, shift[0]);
+            op2ShiftBuf = Cshift(op2, 1, shift[1]);
+            op2ShiftBuf = Cshift(op2, 2, shift[2]); */
+            //END TEST
             LOG(Message) << "shift = " << shift << std::endl;
             peekSite(buf1, op1, shift);
             op2ShiftBuf *= windowField;
