@@ -195,8 +195,10 @@ void TPosSpaceRenorm<SImpl>::execute(void)
             }
         }
     }
-
     LOG(Message) << "Computing 2-point functions (w/ Window)" << std::endl;
+    LOG(Message) << "Window function min: " << windowmin << std::endl;
+    LOG(Message) << "Window function max: " << windowmax << std::endl;
+
     for (auto &p: par().op)
     {
         LOG(Message) << "  <" << p.first << " " << p.second << ">" << std::endl;
