@@ -131,6 +131,7 @@ void TPosSpaceRenorm<SImpl>::setup(void)
     //envTmpLat(ComplexField, "ft_buf_in");
     //envTmpLat(ComplexField, "ft_buf_out");
     envTmpLat(ComplexField, "ftBuf");
+    envTmpLat(ComplexField, "op1ShiftBuf");
     envTmpLat(ComplexField, "op2ShiftBuf");
     envTmpLat(ComplexField, "coor");
     envTmpLat(ComplexField, "windowField");
@@ -167,6 +168,7 @@ void TPosSpaceRenorm<SImpl>::execute(void)
     random(sRNG, rn);
 
     envGetTmp(ComplexField, ftBuf);
+    envGetTmp(ComplexField, op1ShiftBuf);
     envGetTmp(ComplexField, op2ShiftBuf);
     envGetTmp(ComplexField, coor);
     envGetTmp(ComplexField, windowField);
@@ -224,17 +226,26 @@ void TPosSpaceRenorm<SImpl>::execute(void)
         LOG(Message) << "  <" << p.first << " " << p.second << ">" << std::endl;
         auto &op1 = envGet(ComplexField, p.first);
         auto &op2 = envGet(ComplexField, p.second);
-        op2ShiftBuf = op2;
+        Complex sum_op1 = TensorRemove(sum(op1)) / static_cast<double>(nt * nt * nt);
+        Complex sum_op2 = TensorRemove(sum(op2)) / static_cast<double>(nt * nt * nt);
+        LOG(Message) << "trace op1: " << sum_op1 << std::endl;
+        LOG(Message) << "trace op2: " << sum_op2 << std::endl;
+        op1ShiftBuf = op1 - sum_op1;
+        op2ShiftBuf = op2 - sum_op2;
+        LOG(Message) << "Subtracted trace op1: " << TensorRemove(sum(op1ShiftBuf)) / static_cast<double>(nt * nt * nt) << std::endl;
+        LOG(Message) << "Subtracted trace op2: " << TensorRemove(sum(op2ShiftBuf)) / static_cast<double>(nt * nt * nt) << std::endl;
         sRNG.SeedFixedIntegers(std::vector<int>({45, 12, 81}));
         for (int i = 0; i < samp; i++)
         {
             random(sRNG, rn);
             for (int mu = 0; mu < nd; mu++)
             {
-                shift[mu] = nt * rn(mu);
-                op2ShiftBuf = Cshift(op2, mu, shift[mu]);
+                //shift[mu] = nt * rn(mu);
+                //NO RANDOM SHIFT: only use a = {0,0,0}
+                shift[mu] = 0;
+                op2ShiftBuf = Cshift(op2ShiftBuf, mu, shift[mu]);
             }
-            //START TEST
+            //START TEST for summing whole lattice (set samp = nt^3)
             /* shift[0] = i%nt; //temp
             shift[1] = (i/nt)%nt;//temp
             shift[2] = (i/nt/nt)%nt;//temp
@@ -243,7 +254,7 @@ void TPosSpaceRenorm<SImpl>::execute(void)
             op2ShiftBuf = Cshift(op2, 2, shift[2]); */
             //END TEST
             LOG(Message) << "shift = " << shift << std::endl;
-            peekSite(buf1, op1, shift);
+            peekSite(buf1, op1ShiftBuf, shift);
             op2ShiftBuf *= windowField;
             fft.FFT_all_dim(ftBuf, op2ShiftBuf, FFT::forward);
             for (unsigned int m = 0; m < nmom; ++m)

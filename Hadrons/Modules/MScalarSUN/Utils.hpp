@@ -151,6 +151,35 @@ inline double windowFunction(double a, double b, double r, int n_step)
     }
 }
 
+template <class SinkSite, class SourceSite>
+std::vector<Complex> makeTwoPointPosSpace1D(const std::vector<SinkSite> &sink,
+                                            const std::vector<SourceSite> &source,
+                                            const double factor = 1.,
+                                            const double zeroval = 0.,
+                                            const double min = -1.,
+                                            const double max = -1.)
+{
+    assert(sink.size() == source.size());
+
+    unsigned int nt = sink.size();
+    std::vector<Complex> res(nt, 0.);
+
+    for (unsigned int dt = 1; dt < nt; ++dt)
+    {
+        for (unsigned int t = 0; t < nt; ++t)
+        {
+            res[dt] += trace(sink[(t + dt) % nt] * adj(source[t])) * windowFunction(min, max, dt, 1000);
+        }
+        res[dt] *= factor / static_cast<double>(nt);
+    }
+    for (unsigned int t = 0; t < nt; ++t)
+    {
+        res[0] += trace(sink[t] * adj(source[t])) * zeroval;
+    }
+    res[0] *= factor / static_cast<double>(nt);
+    return res;
+}
+
 inline std::string varName(const std::string name, const std::string suf)
 {
     return name + "_" + suf;
