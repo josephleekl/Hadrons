@@ -167,7 +167,8 @@ void TPosSpaceRenorm1D<SImpl>::execute(void)
     {
         auto &op = envGet(ComplexField, o);
         Complex sum_op = TensorRemove(sum(op)) / static_cast<double>(nt * nt * nt);
-        opShiftBuf = op - sum_op;
+        //opShiftBuf = op - sum_op;
+        opShiftBuf = op;
         slicedOp[o].resize(nmom);
         LOG(Message) << "Operator '" << o << "' FFT" << std::endl;
         fft.FFT_dim_mask(ftBuf, opShiftBuf, dMask, FFT::forward);
