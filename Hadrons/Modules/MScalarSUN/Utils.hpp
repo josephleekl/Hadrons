@@ -172,7 +172,6 @@ std::vector<Complex> makeTwoPointPosSpace1D(const std::vector<SinkSite> &sink,
         source_sum += adj(source[t]);
     }
     discon_prod = sink_sum * source_sum / static_cast<double>(nt*nt*nt*nt);
-    LOG(Message) << "discon_prod: " << discon_prod << std::endl;
     for (unsigned int dt = 0; dt < nt; ++dt)
     {
         for (unsigned int t = 0; t < nt; ++t)
@@ -180,7 +179,6 @@ std::vector<Complex> makeTwoPointPosSpace1D(const std::vector<SinkSite> &sink,
             res[dt] += trace(sink[(t + dt) % nt] * adj(source[t])) * windowFunction(min, max, dt, 1000);
         }
         res[dt] *= factor / static_cast<double>(nt);
-        LOG(Message) << "Before res[" << dt << "] = " << res[dt] << std::endl;
         res[dt] -= discon_prod;
     }
     for (unsigned int t = 0; t < nt; ++t)
@@ -188,9 +186,7 @@ std::vector<Complex> makeTwoPointPosSpace1D(const std::vector<SinkSite> &sink,
         res[0] += trace(sink[t] * adj(source[t])) * zeroval;
     }
     res[0] *= factor / static_cast<double>(nt);
-    LOG(Message) << "Before res[0] = " << res[0] << std::endl;
     res[0] -= discon_prod;
-    LOG(Message) << "after  res[0]: " <<  res[0] << " |    res[1]: " << res[1] << std::endl;
     return res;
 }
 

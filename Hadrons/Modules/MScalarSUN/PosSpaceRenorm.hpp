@@ -160,7 +160,7 @@ void TPosSpaceRenorm<SImpl>::execute(void)
     std::vector<int>                             shift(nd,0);
     std::vector<std::vector<Complex>>            res(nmom, std::vector<Complex>(nt, 0.));
     std::vector<int>                             qt(nd,0);
-    Complex                                      bufsum(0., 0.);
+    Complex                                      bufsum(0., 0.), sum_op2;
     //Grid::iVector<Grid::RealD, 2000> Vec;
     Grid::iVector<Grid::RealD, 3> rn;
     GridSerialRNG sRNG;
@@ -226,36 +226,35 @@ void TPosSpaceRenorm<SImpl>::execute(void)
         LOG(Message) << "  <" << p.first << " " << p.second << ">" << std::endl;
         auto &op1 = envGet(ComplexField, p.first);
         auto &op2 = envGet(ComplexField, p.second);
-        Complex sum_op1 = TensorRemove(sum(op1)) / static_cast<double>(nt * nt * nt);
-        Complex sum_op2 = TensorRemove(sum(op2)) / static_cast<double>(nt * nt * nt);
-        LOG(Message) << "trace op1: " << sum_op1 << std::endl;
-        LOG(Message) << "trace op2: " << sum_op2 << std::endl;
-        op1ShiftBuf = op1 - sum_op1;
-        op2ShiftBuf = op2 - sum_op2;
-        LOG(Message) << "Subtracted trace op1: " << TensorRemove(sum(op1ShiftBuf)) / static_cast<double>(nt * nt * nt) << std::endl;
-        LOG(Message) << "Subtracted trace op2: " << TensorRemove(sum(op2ShiftBuf)) / static_cast<double>(nt * nt * nt) << std::endl;
+
+        LOG(Message) << "op1 sum = " << TensorRemove(sum(op1)) << std::endl;
+        LOG(Message) << "op2 sum = " << TensorRemove(sum(op2)) << std::endl;
+
         sRNG.SeedFixedIntegers(std::vector<int>({45, 12, 81}));
         for (int i = 0; i < samp; i++)
         {
             random(sRNG, rn);
-            for (int mu = 0; mu < nd; mu++)
+            /* for (int mu = 0; mu < nd; mu++)
             {
                 //shift[mu] = nt * rn(mu);
                 //NO RANDOM SHIFT: only use a = {0,0,0}
                 shift[mu] = 0;
                 op2ShiftBuf = Cshift(op2ShiftBuf, mu, shift[mu]);
-            }
+            } */
             //START TEST for summing whole lattice (set samp = nt^3)
-            /* shift[0] = i%nt; //temp
+            shift[0] = i%nt; //temp
             shift[1] = (i/nt)%nt;//temp
             shift[2] = (i/nt/nt)%nt;//temp
             op2ShiftBuf = Cshift(op2, 0, shift[0]);
-            op2ShiftBuf = Cshift(op2, 1, shift[1]);
-            op2ShiftBuf = Cshift(op2, 2, shift[2]); */
+            op2ShiftBuf = Cshift(op2ShiftBuf, 1, shift[1]);
+            op2ShiftBuf = Cshift(op2ShiftBuf, 2, shift[2]);
             //END TEST
             LOG(Message) << "shift = " << shift << std::endl;
-            peekSite(buf1, op1ShiftBuf, shift);
+            peekSite(buf1, op1, shift);
             op2ShiftBuf *= windowField;
+            //Take zero mode away
+            sum_op2 = TensorRemove(sum(op2ShiftBuf)) / static_cast<double>(nt * nt * nt);
+            op2ShiftBuf -= sum_op2;
             fft.FFT_all_dim(ftBuf, op2ShiftBuf, FFT::forward);
             for (unsigned int m = 0; m < nmom; ++m)
             {
@@ -268,6 +267,12 @@ void TPosSpaceRenorm<SImpl>::execute(void)
                 {
                     qt[nd - 1] = t;
                     peekSite(buf2, ftBuf, qt);
+                    /* if( t == 0)
+                    {
+                        LOG(Message) << "buf1 value = " << TensorRemove(buf1) << std::endl;
+                        LOG(Message) << "buf2 value = " << TensorRemove(buf2) << std::endl;
+                        LOG(Message) << "sum_op2    = " << sum_op2 << std::endl;
+                    }  */
                     res[m][t] += trace(TensorRemove(buf1) * adj(TensorRemove(buf2))) / static_cast<double>(samp);
                 }
             }
@@ -281,6 +286,10 @@ void TPosSpaceRenorm<SImpl>::execute(void)
             r.mom     = mom_[m];
             r.data    = res[m];
             result.push_back(r);
+            for (unsigned int t = 0; t < nt; ++t)
+                {
+                    res[m][t] = 0.;
+                }
         }
     }
     saveResult(par().output, "twopt", result);
